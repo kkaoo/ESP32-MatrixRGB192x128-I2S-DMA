@@ -21,8 +21,6 @@ RGB64x32MatrixPanel_I2S_DMA matrix;
 #define mw 192
 #define mh 128
 
-#define BRIGHTNESS 8
-
 // This could also be defined as matrix.color(255,0,0) but those defines
 // are meant to work for Adafruit::GFX backends that are lacking color()
 #define LED_BLACK		0
@@ -263,13 +261,17 @@ void setup() {
     Serial.begin(460800);
 	spi_init();
 
-	//matrix.begin(R1_PIN_DEFAULT ,B1_PIN_DEFAULT, G1_PIN_DEFAULT , R2_PIN_DEFAULT , B2_PIN_DEFAULT, G2_PIN_DEFAULT , 22,21,17,32,33, LAT_PIN_DEFAULT, OE_PIN_DEFAULT , CLK_PIN_DEFAULT);
+#if 0
+	matrix.begin(25,27,26, 14,13,12, 22,21,17,32,33, 4,15,16);
+#else
+    //           R1,G1,B1, R2,G2,B2, A,B,C,D,E,     LAT,OEB,CLK
+	matrix.begin(33,25,32, 27,21,26, 13,12, 2,15,14, 4,17,16);
+    pinMode(22, OUTPUT);
+    digitalWrite(22, HIGH);        
+#endif
 
-    // R1,B1,G1,  R2,B2,G2,  A,B,C,D,E,   LAT,OEB,CLK
-	matrix.begin(33,25,32, 27,21,26, 13,12,2,15,14, 4,17,16);
-        
     matrix.setTextWrap(false);
-    matrix.setBrightness(BRIGHTNESS);
+    matrix.setPanelBrightness(16);
 
     xTaskCreate(
         taskOne,          /* Task function. */
@@ -279,8 +281,7 @@ void setup() {
         1,                /* Priority of the task. */
         NULL);            /* Task handle. */
 
-    pinMode(22, OUTPUT);
-    digitalWrite(22, HIGH);
+
 
     // // Test full bright of all LEDs. If brightness is too high
     // // for your current limit (i.e. USB), decrease it.

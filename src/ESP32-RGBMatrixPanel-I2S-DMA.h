@@ -11,6 +11,8 @@
 
 #include "Adafruit_GFX.h"
 
+#define SERIAL_DEBUG_OUTPUT 1
+
 /*
 
     This is example code to driver a p3(2121)64*32 -style RGB LED display. These types of displays do not have memory and need to be refreshed
@@ -61,48 +63,43 @@
 */
 
 /***************************************************************************************/
-/* Serial Debugging Output on or off                                                   */
-
-#define SERIAL_DEBUG_OUTPUT 1
-
-/***************************************************************************************/
 /* HUB75 RGB pixel WIDTH and HEIGHT. 
  *
  * This library has only been tested with a 64 pixel (wide) and 32 (high) RGB panel. 
  * Theoretically, if you want to chain two of these horizontally to make a 128x32 panel
  * you can do so with the cable and then set the MATRIX_WIDTH to '128'.
  *
- * Also, if you use a 64x64 panel, then set the MATRIX_HEIGHT to '64'; it will work!
+ * Also, if you use a 64x64 panel, then set the MATRIX_HEIGHT to '64', and it might work.
  *
  * All of this is memory permitting of course (dependant on your sketch etc.) ...
  *
  */
 
-#define MATRIX_HEIGHT               32 //64
-#define MATRIX_WIDTH                64
+#define MATRIX_WIDTH                384//256
+#define MATRIX_HEIGHT               64//32
+
 #define MATRIX_ROWS_IN_PARALLEL     2
 
 /***************************************************************************************/
 /* ESP32 Pin Definition. You can change this, but best if you keep it as is...         */
 
-#define R1_PIN_DEFAULT  25
-#define G1_PIN_DEFAULT  26
-#define B1_PIN_DEFAULT  27
-#define R2_PIN_DEFAULT  14
-#define G2_PIN_DEFAULT  12
-#define B2_PIN_DEFAULT  13
+#define R1_PIN_DEFAULT  33
+#define G1_PIN_DEFAULT  32
+#define B1_PIN_DEFAULT  25
+#define R2_PIN_DEFAULT  27
+#define G2_PIN_DEFAULT  26
+#define B2_PIN_DEFAULT  21
 
-#define A_PIN_DEFAULT   23
-#define B_PIN_DEFAULT   19
-#define C_PIN_DEFAULT   5
-#define D_PIN_DEFAULT   17
-#define E_PIN_DEFAULT   -1 // Change to a valid pin if using a 64 pixel row panel.
+#define A_PIN_DEFAULT   13
+#define B_PIN_DEFAULT   12
+#define C_PIN_DEFAULT   2
+#define D_PIN_DEFAULT   15
+#define E_PIN_DEFAULT   14//-1 // Change to a valid pin if using a 64 pixel row panel.
           
 #define LAT_PIN_DEFAULT 4
-#define OE_PIN_DEFAULT  15
+#define OE_PIN_DEFAULT  17
 
-#define CLK_PIN_DEFAULT 16
-
+#define CLK_PIN_DEFAULT 13
 /***************************************************************************************/
 /* Don't change this stuff unless you know what you are doing */
 
@@ -128,21 +125,25 @@
 #define BIT_E (1<<12)   
 
 // RGB Panel Constants / Calculated Values
+#define COLOR_DEPTH 15//18//24     
 #define COLOR_CHANNELS_PER_PIXEL 3 
 #define PIXELS_PER_LATCH    ((MATRIX_WIDTH * MATRIX_HEIGHT) / MATRIX_HEIGHT) // = 64
-#define COLOR_DEPTH_BITS    (COLOR_DEPTH/COLOR_CHANNELS_PER_PIXEL)  //  = 8
-#define ROWS_PER_FRAME      (MATRIX_HEIGHT/MATRIX_ROWS_IN_PARALLEL) //  = 16
+#define COLOR_DEPTH_BITS    (COLOR_DEPTH/COLOR_CHANNELS_PER_PIXEL)  //  = 
+#define ROWS_PER_FRAME      (MATRIX_HEIGHT/MATRIX_ROWS_IN_PARALLEL) //  = 32
 
 /***************************************************************************************/
-/* Keep this as is. Do not change.                                                     */
-#define CLKS_DURING_LATCH 0
+/* You really don't want to change this stuff                                          */
+
+#define CLKS_DURING_LATCH   0  // ADDX is output directly using GPIO
 #define MATRIX_I2S_MODE I2S_PARALLEL_BITS_16
 #define MATRIX_DATA_STORAGE_TYPE uint16_t
 
-#define ESP32_NUM_FRAME_BUFFERS           2 
-#define ESP32_I2S_CLOCK_SPEED (20000000UL)
-#define COLOR_DEPTH 24     
+#define ESP32_NUM_FRAME_BUFFERS           1//2 
+#define ESP32_OE_OFF_CLKS_AFTER_LATCH     1
+#define ESP32_I2S_CLOCK_SPEED (26670000UL)
 
+
+#define BIT_OFFSET (6+8-COLOR_DEPTH_BITS)
 /***************************************************************************************/            
 
 
@@ -183,10 +184,9 @@ class RGB64x32MatrixPanel_I2S_DMA : public Adafruit_GFX {
       
         backbuf_id = 0;
         brightness = 16; // If you get ghosting... reduce brightness level. 60 seems to be the limit before ghosting on a 64 pixel wide physical panel for some panels
-        min_refresh_rate = 250; // Probably best to leave as is unless you want to experiment. Framerate has an impact on brightness and also power draw - voltage ripple.
-        
+        min_refresh_rate = 50; // Probably best to leave as is unless you want to experiment. Framerate has an impact on brightness and also power draw - voltage ripple.        
     }
-
+    
     // Painfully propagate the DMA pin configuration, or use compiler defaults
     void begin(int dma_r1_pin = R1_PIN_DEFAULT , int dma_g1_pin = G1_PIN_DEFAULT, int dma_b1_pin = B1_PIN_DEFAULT , int dma_r2_pin = R2_PIN_DEFAULT , int dma_g2_pin = G2_PIN_DEFAULT , int dma_b2_pin = B2_PIN_DEFAULT , int dma_a_pin  = A_PIN_DEFAULT  , int dma_b_pin = B_PIN_DEFAULT  , int dma_c_pin = C_PIN_DEFAULT , int dma_d_pin = D_PIN_DEFAULT  , int dma_e_pin = E_PIN_DEFAULT , int dma_lat_pin = LAT_PIN_DEFAULT, int dma_oe_pin = OE_PIN_DEFAULT , int dma_clk_pin = CLK_PIN_DEFAULT)
     {
@@ -216,21 +216,21 @@ class RGB64x32MatrixPanel_I2S_DMA : public Adafruit_GFX {
 #endif    
 
 
-      // Flush the DMA buffers prior to configuring DMA - Avoid visual artefacts on boot.
-      clearScreen(); // Must fill the DMA buffer with the initial output bit sequence or the panel will display garbage
-      flipDMABuffer(); // flip to backbuffer 1
-      clearScreen(); // Must fill the DMA buffer with the initial output bit sequence or the panel will display garbage
-      flipDMABuffer(); // backbuffer 0
-      
+	  // Flush the DMA buffers prior to configuring DMA - Avoid visual artefacts on boot.
+      flushDMAbuffer();  
+//      flipDMABuffer(); // flip to backbuffer 1
+ //     flushDMAbuffer();
+  //    flipDMABuffer(); // backbuffer 0
+	  
       // Setup the ESP32 DMA Engine. Sprite_TM built this stuff.
       configureDMA(dma_r1_pin, dma_g1_pin, dma_b1_pin, dma_r2_pin, dma_g2_pin, dma_b2_pin, dma_a_pin,  dma_b_pin, dma_c_pin, dma_d_pin, dma_e_pin, dma_lat_pin,  dma_oe_pin,   dma_clk_pin ); //DMA and I2S configuration and setup
 
-      showDMABuffer(); // show 0
-      
+	    showDMABuffer(); // show 0
+	  
     }
     
     // TODO: Disable/Enable auto buffer flipping (useful for lots of drawPixel usage)...
-
+ 
     // Draw pixels
     virtual void drawPixel(int16_t x, int16_t y, uint16_t color);   // overwrite adafruit implementation
     virtual void fillScreen(uint16_t color);                        // overwrite adafruit implementation
@@ -240,53 +240,90 @@ class RGB64x32MatrixPanel_I2S_DMA : public Adafruit_GFX {
     void drawPixelRGB24(int16_t x, int16_t y, rgb_24 color);
     void drawIcon (int *ico, int16_t x, int16_t y, int16_t cols, int16_t rows);
     
+    // TODO: Draw a frame! Oooh.
+    //void writeRGB24Frame2DMABuffer(rgb_24 *framedata, int16_t frame_width, int16_t frame_height);
+    void drawLCDData(int16_t x, int16_t y, uint16_t *bitmap, int16_t w, int16_t h);
+    void updateMatrixDMABuffer2(int16_t x_coord, int16_t y_coord, uint8_t red, uint8_t green, uint8_t blue);
+    
+    
     // Color 444 is a 4 bit scale, so 0 to 15, color 565 takes a 0-255 bit value, so scale up by 255/15 (i.e. 17)!
     uint16_t color444(uint8_t r, uint8_t g, uint8_t b) { return color565(r*17,g*17,b*17); }
 
     // Converts RGB888 to RGB565
     uint16_t color565(uint8_t r, uint8_t g, uint8_t b); // This is what is used by Adafruit GFX!
-	
+
     // Converts RGB333 to RGB565
     uint16_t Color333(uint8_t r, uint8_t g, uint8_t b); // This is what is used by Adafruit GFX! Not sure why they have a capital 'C' for this particular function.
 
+
     inline void flipDMABuffer() 
-    {
-        // Flip to other buffer as the backbuffer. i.e. Graphic changes happen to this buffer (but aren't displayed until showDMABuffer())
-        backbuf_id ^=1; 
-        
+	{
+		// Step 1. Bring backbuffer to the foreground (i.e. show it)
+		//showDMABuffer();
+		
+		// Step 2. Copy foreground to backbuffer
+		//matrixUpdateFrames[backbuf_id ^ 1] = matrixUpdateFrames[backbuf_id];	  // copy currently being displayed buffer to backbuffer		
+		
+		// Step 3. Change to this new buffer as the backbuffer
+		//backbuf_id ^=1; // set this now to the  back_buffer to update (not displayed yet though)
+		
 #if SERIAL_DEBUG_OUTPUT     
-        Serial.printf("Set back buffer to: %d\n", backbuf_id);
-#endif      
+		Serial.printf("Set back buffer to: %d\n", backbuf_id);
+#endif		
     }
-    
-    inline void showDMABuffer()
-    {
-        i2s_parallel_flip_to_buffer(&I2S1, backbuf_id);
-    }
-    
-    
-    inline void setPanelBrightness(int b)
+	
+	void showDMABuffer()
+	{
+		i2s_parallel_flip_to_buffer(&I2S1, backbuf_id);
+	}
+	
+
+    void setPanelBrightness(int _brightness)
     {
       // Change to set the brightness of the display, range of 1 to matrixWidth (i.e. 1 - 64)
-        brightness = b;
+      brightness = _brightness;
     }
-    
+
     inline void setMinRefreshRate(int rr)
     {
         min_refresh_rate = rr;
     }   
-            
-    
+
+
    // ------- PRIVATE -------
   private:
   
     void allocateDMAbuffers() 
     {
-        matrixUpdateFrames = (frameStruct *)heap_caps_malloc(sizeof(frameStruct) * ESP32_NUM_FRAME_BUFFERS, MALLOC_CAP_DMA);
-        Serial.printf("Allocating DMA Refresh Buffer...\r\nTotal DMA Memory available: %d bytes total. Largest free block: %d bytes\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA), heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
-      
+        Serial.printf("\r\nAllocating DMA Refresh Buffer...\r\nTotal DMA Memory available: %d bytes total. Largest free block: %d bytes\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA), heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+        //matrixUpdateFrames = (frameStruct *)heap_caps_malloc(sizeof(frameStruct) * ESP32_NUM_FRAME_BUFFERS, MALLOC_CAP_DMA);
+        for(int i=0;i<ROWS_PER_FRAME;i++)
+        {
+          matrixUpdateFrames[i] = (rowColorDepthStruct *)heap_caps_malloc(sizeof(rowColorDepthStruct) * ESP32_NUM_FRAME_BUFFERS, MALLOC_CAP_DMA);
+          Serial.printf("\r\nAllocating DMA Refresh Buffer %d...\r\nTotal DMA Memory available: %d bytes total. Largest free block: %d bytes\r\n", i, heap_caps_get_free_size(MALLOC_CAP_DMA), heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+        }
+        //matrixUpdateFrames2 = (frameStruct *)heap_caps_malloc(sizeof(frameStruct) * ESP32_NUM_FRAME_BUFFERS*0.5, MALLOC_CAP_DMA);
+        //Serial.printf("\r\nAllocating DMA Refresh Buffer...\r\nTotal DMA Memory available: %d bytes total. Largest free block: %d bytes\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA), heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+        //matrixUpdateFrames3 = (frameStruct *)heap_caps_malloc(sizeof(frameStruct) * ESP32_NUM_FRAME_BUFFERS, MALLOC_CAP_DMA);
+        //Serial.printf("\r\nAllocating DMA Refresh Buffer...\r\nTotal DMA Memory available: %d bytes total. Largest free block: %d bytes\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA), heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+
+
+        Serial.printf("rowColorDepthStruct sizeof %d bytes. \r\n", sizeof(rowColorDepthStruct)*ESP32_NUM_FRAME_BUFFERS );
+        Serial.printf("frameStruct sizeof %d bytes. \r\n", sizeof(rowColorDepthStruct)*ESP32_NUM_FRAME_BUFFERS*ROWS_PER_FRAME );
     } // end initMatrixDMABuffer()
     
+    void flushDMAbuffer()
+    {
+         Serial.printf("Flushing buffer %d\n", backbuf_id);
+          // Need to wipe the contents of the matrix buffers or weird things happen.
+          for (int y=0;y<MATRIX_HEIGHT; y++)
+            for (int x=0;x<MATRIX_WIDTH; x++)
+            {
+              //Serial.printf("\r\nFlushing x, y coord %d, %d", x, y);
+              updateMatrixDMABuffer( x, y, 0, 0, 0);
+            }
+    }
+
     void configureDMA(int r1_pin, int  g1_pin, int  b1_pin, int  r2_pin, int  g2_pin, int  b2_pin, int  a_pin, int   b_pin, int  c_pin, int  d_pin, int  e_pin, int  lat_pin, int   oe_pin, int clk_pin); // Get everything setup. Refer to the .c file
 
     
@@ -295,28 +332,31 @@ class RGB64x32MatrixPanel_I2S_DMA : public Adafruit_GFX {
    
     // Update the entire DMA buffer (aka. The RGB Panel) a certain colour (wipe the screen basically)
     void updateMatrixDMABuffer(uint8_t red, uint8_t green, uint8_t blue);
-        
+    	
     // Pixel data is organized from LSB to MSB sequentially by row, from row 0 to row matrixHeight/matrixRowsInParallel (two rows of pixels are refreshed in parallel)
-    frameStruct *matrixUpdateFrames;
-    
-    // Setup
-    bool dma_configuration_success;
-        
-    // Internal variables
-    bool doubleBuffer;  // Do we use double buffer mode? Your project code will have to manually flip between both.
-    int  backbuf_id;    // If using double buffer, which one is NOT active (ie. being displayed) to write too?
-    
+    rowColorDepthStruct *matrixUpdateFrames[ROWS_PER_FRAME];
+    //frameStruct *matrixUpdateFrames2;
+    //frameStruct *matrixUpdateFrames3;
+	
+	// Setup
+	bool dma_configuration_success;
+    	
+	// Internal variables
+    bool doubleBuffer; 	// Do we use double buffer mode? Your project code will have to manually flip between both.
+    int  backbuf_id; 	// If using double buffer, which one is NOT active (ie. being displayed) to write too?
+	
     int  lsbMsbTransitionBit;
-    int  refreshRate;   
+    int  refreshRate;     
     int  brightness;
     int  min_refresh_rate;
-    
 
+    
 }; // end Class header
 
 /***************************************************************************************/   
 // https://stackoverflow.com/questions/5057021/why-are-c-inline-functions-in-the-header
 /* 2. functions declared in the header must be marked inline because otherwise, every translation unit which includes the header will contain a definition of the function, and the linker will complain about multiple definitions (a violation of the One Definition Rule). The inline keyword suppresses this, allowing multiple translation units to contain (identical) definitions. */
+
 inline void RGB64x32MatrixPanel_I2S_DMA::drawPixel(int16_t x, int16_t y, uint16_t color) // adafruit virtual void override
 {
   drawPixelRGB565( x, y, color);
@@ -348,15 +388,11 @@ inline void RGB64x32MatrixPanel_I2S_DMA::drawIcon (int *ico, int16_t x, int16_t 
     }
   }  
 }
-
-
-
-
 inline void RGB64x32MatrixPanel_I2S_DMA::fillScreen(uint16_t color)  // adafruit virtual void override
 {
-  uint8_t r = ((((color >> 11) & 0x1F) * 527) + 23) >> 6;
-  uint8_t g = ((((color >> 5) & 0x3F) * 259) + 33) >> 6;
-  uint8_t b = (((color & 0x1F) * 527) + 23) >> 6;
+  uint8_t r = ((((color >> 11) & 0x1F) * 527) + 23) >> BIT_OFFSET;
+  uint8_t g = ((((color >> 5) & 0x3F) * 259) + 33) >> BIT_OFFSET;
+  uint8_t b = (((color & 0x1F) * 527) + 23) >> BIT_OFFSET;
   
   updateMatrixDMABuffer(r, g, b); // the RGB only (no pixel coordinate) version of 'updateMatrixDMABuffer'
 } 
@@ -364,9 +400,9 @@ inline void RGB64x32MatrixPanel_I2S_DMA::fillScreen(uint16_t color)  // adafruit
 // For adafruit
 inline void RGB64x32MatrixPanel_I2S_DMA::drawPixelRGB565(int16_t x, int16_t y, uint16_t color) 
 {
-  uint8_t r = ((((color >> 11) & 0x1F) * 527) + 23) >> 6;
-  uint8_t g = ((((color >> 5) & 0x3F) * 259) + 33) >> 6;
-  uint8_t b = (((color & 0x1F) * 527) + 23) >> 6;
+  uint8_t r = ((((color >> 11) & 0x1F) * 527) + 23) >> BIT_OFFSET;
+  uint8_t g = ((((color >> 5) & 0x3F) * 259) + 33) >> BIT_OFFSET;
+  uint8_t b = (((color & 0x1F) * 527) + 23) >> BIT_OFFSET;
   
   updateMatrixDMABuffer( x, y, r, g, b);
 }
@@ -381,6 +417,128 @@ inline void RGB64x32MatrixPanel_I2S_DMA::drawPixelRGB24(int16_t x, int16_t y, rg
   updateMatrixDMABuffer( x, y, color.red, color.green, color.blue);
 }
 
+
+#define OFFSET MATRIX_WIDTH*MATRIX_HEIGHT/4
+
+inline void RGB64x32MatrixPanel_I2S_DMA::drawLCDData(int16_t x, int16_t y, uint16_t *bitmap, int16_t w, int16_t h) {
+
+    if ( !dma_configuration_success)
+      assert("DMA configuration in begin() not performed or completed successfully.");
+
+    h/=2;
+    int16_t j=0;
+    for(int16_t jj=0; jj<h; jj++) {
+        if(jj<32)
+          j=jj;
+        else
+          j=jj+32;
+
+        for(int16_t i=0; i<w; i++ ) {
+
+            uint16_t color = bitmap[j * w + i];
+            color = ((color>>8)&0x00ff) + ((color<<8)&0xff00);
+
+            uint16_t color2 = bitmap[j * w + i + OFFSET];
+            color2= ((color2>>8)&0x00ff) + ((color2<<8)&0xff00);
+
+            int16_t xx = i;
+            int16_t yy = j;
+
+            if(yy >= 64)
+            {
+              xx = xx + w;
+              yy = yy - 64; 
+            }
+
+            uint8_t r = ((((color >> 11) & 0x1F) * 527) + 23) >> BIT_OFFSET;
+            uint8_t g = ((((color >> 5) & 0x3F) * 259) + 33) >> BIT_OFFSET;
+            uint8_t b = (((color & 0x1F) * 527) + 23) >> BIT_OFFSET;
+
+            uint8_t r2 = ((((color2 >> 11) & 0x1F) * 527) + 23) >> BIT_OFFSET;
+            uint8_t g2 = ((((color2 >> 5) & 0x3F) * 259) + 33) >> BIT_OFFSET;
+            uint8_t b2 = (((color2 & 0x1F) * 527) + 23) >> BIT_OFFSET;    
+            
+
+            #define y_coord yy
+            #define x_coord xx
+
+              
+            for(int color_depth_idx=0; color_depth_idx<COLOR_DEPTH_BITS; color_depth_idx++)  // color depth - 8 iterations
+            {
+                uint16_t mask = (1 << color_depth_idx); // 24 bit color
+                
+                // The destination for the pixel bitstream 
+                rowBitStruct *p = &matrixUpdateFrames[y_coord]->rowbits[color_depth_idx]; //matrixUpdateFrames location to write to uint16_t's
+
+                int v=0; // the output bitstream
+                
+                // if there is no latch to hold address, output ADDX lines directly to GPIO and latch data at end of cycle
+                int gpioRowAddress = y_coord;
+                
+                // normally output current rows ADDX, special case for LSB, output previous row's ADDX (as previous row is being displayed for one latch cycle)
+                if(color_depth_idx == 0)
+                  gpioRowAddress = y_coord-1;
+                
+                if (gpioRowAddress & 0x01) v|=BIT_A; // 1
+                if (gpioRowAddress & 0x02) v|=BIT_B; // 2
+                if (gpioRowAddress & 0x04) v|=BIT_C; // 4
+                if (gpioRowAddress & 0x08) v|=BIT_D; // 8
+                if (gpioRowAddress & 0x10) v|=BIT_E; // 16
+                
+                // need to disable OE after latch to hide row transition
+                if((x_coord) == 0) v|=BIT_OE;
+                
+                // drive latch while shifting out last bit of RGB data
+                if((x_coord) == PIXELS_PER_LATCH-1) v|=BIT_LAT;
+                
+                // turn off OE after brightness value is reached when displaying MSBs
+                // MSBs always output normal brightness
+                // LSB (!color_depth_idx) outputs normal brightness as MSB from previous row is being displayed
+                if((color_depth_idx > lsbMsbTransitionBit || !color_depth_idx) && ((x_coord) >= brightness)) v|=BIT_OE; // For Brightness
+                
+                // special case for the bits *after* LSB through (lsbMsbTransitionBit) - OE is output after data is shifted, so need to set OE to fractional brightness
+                if(color_depth_idx && color_depth_idx <= lsbMsbTransitionBit) {
+                  // divide brightness in half for each bit below lsbMsbTransitionBit
+                  int lsbBrightness = brightness >> (lsbMsbTransitionBit - color_depth_idx + 1);
+                  if((x_coord) >= lsbBrightness) v|=BIT_OE; // For Brightness
+                }
+                
+                // need to turn off OE one clock before latch, otherwise can get ghosting
+                if((x_coord)==PIXELS_PER_LATCH-1) v|=BIT_OE;
+
+                int16_t tmp_x_coord = x_coord;
+                if(x_coord%2)
+                {
+                  tmp_x_coord -= 1;
+                } else {
+                  tmp_x_coord += 1;
+                } // end reordering
+                        
+                  if (g & mask)
+                        v|=BIT_G1;
+                  if (b & mask)
+                        v|=BIT_B1;           
+                  if (r & mask)
+                        v|=BIT_R1;
+
+                  if (r2 & mask)
+                    v|=BIT_R2;
+                  if (g2 & mask) 
+                    v|=BIT_G2;
+                  if (b2 & mask)
+                    v|=BIT_B2;
+
+                if(x_coord%2){
+                  p->data[(x_coord)-1] = v;
+                } else {
+                  p->data[(x_coord)+1] = v;
+                }
+                  
+            } // color depth loop (8)
+
+        }
+    }
+}
 
 // Pass 8-bit (each) R,G,B, get back 16-bit packed color
 //https://github.com/squix78/ILI9341Buffer/blob/master/ILI9341_SPI.cpp
@@ -402,5 +560,6 @@ inline uint16_t RGB64x32MatrixPanel_I2S_DMA::Color333(uint8_t r, uint8_t g, uint
 	return ((r & 0x7) << 13) | ((r & 0x6) << 10) | ((g & 0x7) << 8) | ((g & 0x7) << 5) | ((b & 0x7) << 2) | ((b & 0x6) >> 1);
 	
 }
+
 
 #endif

@@ -9,15 +9,19 @@
 * RAM限制和DMA输出频率限制，RGB Panel刷新率只有70HZ，
 * can theoretically provide 5 bit colour: RGB555
 
+![test](doc/test.jpg)
+
 ## Usage
 
 * 如果不需要那么高的亮度，可以将亮度调低减小电流:
-`matrix.setBrightness(8);`
+`matrix.setPanelBrightness(8);`
 * 注意有的面板是RGB，有的面板是BGR，可以在直接matrix.begin()函数调整
 `matrix.begin(R1,G1,B1,R2,G2,B2.....)`
 `matrix.begin(B1,G1,R1,R2,G2,B2.....)`
-* 暂时没测试FM612X系列驱动IC的面板，这款IC比较特殊，需要调整驱动
+* 暂时没测试FM612X系列驱动IC的面板，这类IC比较特殊，需要定义锁存脉冲个数
 * 开发环境PlatformIO
+* 如果连接6个面板，我是这样排列的
+![panel](doc/panel.png)
   
 ## Circuit & PCB
 
@@ -34,7 +38,8 @@ By default the pin mapping is as follows (defaults defined in ESP32-RGBMatrixPan
 ## 连接树莓派或其它
 
 通过SPI接口连接到树莓派，RGBMatrixPanel模拟成一块SPI TFT显示屏。
-...待续
+
+......待续
 
 ![0](doc/pizero0.jpeg)
 
