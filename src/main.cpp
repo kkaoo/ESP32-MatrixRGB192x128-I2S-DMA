@@ -3,7 +3,6 @@
 // Contains code (c) Adafruit, license BSD
 
 #include "ESP32-RGBMatrixPanel-I2S-DMA.h"
-RGB64x32MatrixPanel_I2S_DMA matrix;
 //#include "smileytongue24.h"
 
 #include <SPI.h>
@@ -21,45 +20,7 @@ RGB64x32MatrixPanel_I2S_DMA matrix;
 #define mw 192
 #define mh 128
 
-// This could also be defined as matrix.color(255,0,0) but those defines
-// are meant to work for Adafruit::GFX backends that are lacking color()
-#define LED_BLACK		0
-
-#define LED_RED_VERYLOW 	(3 <<  11)
-#define LED_RED_LOW 		(7 <<  11)
-#define LED_RED_MEDIUM 		(15 << 11)
-#define LED_RED_HIGH 		(31 << 11)
-
-#define LED_GREEN_VERYLOW	(1 <<  5)   
-#define LED_GREEN_LOW 		(15 << 5)  
-#define LED_GREEN_MEDIUM 	(31 << 5)  
-#define LED_GREEN_HIGH 		(63 << 5)  
-
-#define LED_BLUE_VERYLOW	3
-#define LED_BLUE_LOW 		7
-#define LED_BLUE_MEDIUM 	15
-#define LED_BLUE_HIGH 		31
-
-#define LED_ORANGE_VERYLOW	(LED_RED_VERYLOW + LED_GREEN_VERYLOW)
-#define LED_ORANGE_LOW		(LED_RED_LOW     + LED_GREEN_LOW)
-#define LED_ORANGE_MEDIUM	(LED_RED_MEDIUM  + LED_GREEN_MEDIUM)
-#define LED_ORANGE_HIGH		(LED_RED_HIGH    + LED_GREEN_HIGH)
-
-#define LED_PURPLE_VERYLOW	(LED_RED_VERYLOW + LED_BLUE_VERYLOW)
-#define LED_PURPLE_LOW		(LED_RED_LOW     + LED_BLUE_LOW)
-#define LED_PURPLE_MEDIUM	(LED_RED_MEDIUM  + LED_BLUE_MEDIUM)
-#define LED_PURPLE_HIGH		(LED_RED_HIGH    + LED_BLUE_HIGH)
-
-#define LED_CYAN_VERYLOW	(LED_GREEN_VERYLOW + LED_BLUE_VERYLOW)
-#define LED_CYAN_LOW		(LED_GREEN_LOW     + LED_BLUE_LOW)
-#define LED_CYAN_MEDIUM		(LED_GREEN_MEDIUM  + LED_BLUE_MEDIUM)
-#define LED_CYAN_HIGH		(LED_GREEN_HIGH    + LED_BLUE_HIGH)
-
-#define LED_WHITE_VERYLOW	(LED_RED_VERYLOW + LED_GREEN_VERYLOW + LED_BLUE_VERYLOW)
-#define LED_WHITE_LOW		(LED_RED_LOW     + LED_GREEN_LOW     + LED_BLUE_LOW)
-#define LED_WHITE_MEDIUM	(LED_RED_MEDIUM  + LED_GREEN_MEDIUM  + LED_BLUE_MEDIUM)
-#define LED_WHITE_HIGH		(LED_RED_HIGH    + LED_GREEN_HIGH    + LED_BLUE_HIGH)
-
+RGB64x32MatrixPanel_I2S_DMA matrix(192, 128);
 
 // SPI 通信周波数
 // static const uint32_t SPI_CLK_HZ = 4500000;
@@ -121,13 +82,13 @@ void spi_buf_init()
     // spi_slave_tx_buf = (uint8_t*)heap_caps_malloc(TRANS_SIZE, MALLOC_CAP_DMA);
     spi_slave_rx_buf = (uint8_t*)heap_caps_malloc(TRANS_SIZE, MALLOC_CAP_DMA);
 
-    spi_slave_buf = (uint8_t*)heap_caps_malloc(MATRIX_HEIGHT*MATRIX_WIDTH*2, MALLOC_CAP_DEFAULT);
-    spi_slave_buf2 = (uint8_t*)heap_caps_malloc(MATRIX_HEIGHT*MATRIX_WIDTH*2, MALLOC_CAP_DEFAULT);
+    spi_slave_buf = (uint8_t*)heap_caps_malloc(matrix.MATRIX_HEIGHT*matrix.MATRIX_WIDTH*2, MALLOC_CAP_DEFAULT);
+    spi_slave_buf2 = (uint8_t*)heap_caps_malloc(matrix.MATRIX_HEIGHT*matrix.MATRIX_WIDTH*2, MALLOC_CAP_DEFAULT);
 
     // memset(spi_slave_tx_buf, 0, TRANS_SIZE);
     memset(spi_slave_rx_buf, 0, TRANS_SIZE);
-    memset(spi_slave_buf, 0, MATRIX_HEIGHT*MATRIX_WIDTH*2);
-    memset(spi_slave_buf2, 0, MATRIX_HEIGHT*MATRIX_WIDTH*2);
+    memset(spi_slave_buf, 0, matrix.MATRIX_HEIGHT*matrix.MATRIX_WIDTH*2);
+    memset(spi_slave_buf2, 0, matrix.MATRIX_HEIGHT*matrix.MATRIX_WIDTH*2);
 }
 
 //Called after a transaction is queued and ready for pickup by master. We use this to set the handshake line high.
@@ -227,11 +188,11 @@ void loop() {
         spi_slave_queue_trans(VSPI_HOST, &spi_slave_trans, portMAX_DELAY)
 	);
 
-	if(spi_buf_offset >= MATRIX_WIDTH*MATRIX_HEIGHT*2/4096)
+	if(spi_buf_offset >= matrix.MATRIX_WIDTH*matrix.MATRIX_HEIGHT*2/4096)
 	{
 		spi_buf_offset = 0;
 		// Serial.print(0);
-		memcpy(spi_slave_buf2, spi_slave_buf, MATRIX_HEIGHT*MATRIX_WIDTH*2);			//0.55ms
+		memcpy(spi_slave_buf2, spi_slave_buf, matrix.MATRIX_HEIGHT*matrix.MATRIX_WIDTH*2);			//0.55ms
 		data_ready = 1;
 		// Serial.print(0xff);
 	}
@@ -257,15 +218,16 @@ void taskOne( void * parameter )
 
 
 void setup() {
-
-    Serial.begin(460800);
+    Serial.begin(115200);
 	spi_init();
 
-#if 0
+////different definitions of IO
+#if 1
 	matrix.begin(25,27,26, 14,13,12, 22,21,17,32,33, 4,15,16);
 #else
     //           R1,G1,B1, R2,G2,B2, A,B,C,D,E,     LAT,OEB,CLK
-	matrix.begin(33,25,32, 27,21,26, 13,12, 2,15,14, 4,17,16);
+	// matrix.begin(33,25,32, 27,21,26, 13,12, 2,15,14, 4,17,16);
+	matrix.begin(33,32,25, 27,26,21, 13,12, 2,15,14, 4,17,16);
     pinMode(22, OUTPUT);
     digitalWrite(22, HIGH);        
 #endif
@@ -290,18 +252,50 @@ void setup() {
     delay(1000);
     matrix.clear();
 
+
+    uint16_t x = 0, y = 0;
+    
 	for(uint16_t i=0; i<32; i++)
 	{
-		color_test(i, 0, i);
-		color_test(i, 8, i*2<<5);
-		color_test(i, 16, i<<11);
+		color_test(x/2+i, y+0, i);
+		color_test(x/2+i, y+8, i*2<<5);
+		color_test(x/2+i, y+16, i<<11);
 
-		color_test(i, 24, (i*2<<5)+ i);
-		color_test(i, 32, (i<<11) + i);
-		color_test(i, 40, (i*2<<5) + (i<<11));
+		color_test(x/2+i, y+24, (i*2<<5)+ i);
+		color_test(x/2+i, y+32, (i<<11) + i);
+		color_test(x/2+i, y+40, (i*2<<5) + (i<<11));
 
-		color_test(i, 48, i+ ((i*2)<<5) + (i<<11));
+		color_test(x/2+i, y+48, i+ ((i*2)<<5) + (i<<11));
 	}
+
+    x = 128, y = 64;
+
+    int half_sun [50] = {
+        0x0000, 0x0000, 0x0000, 0xffe0, 0x0000, 0x0000, 0xffe0, 0x0000, 0x0000, 0x0000,
+        0x0000, 0xffe0, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0xffe0, 0x0000,
+        0x0000, 0x0000, 0x0000, 0xffe0, 0xffe0, 0xffe0, 0xffe0, 0x0000, 0x0000, 0x0000,
+        0xffe0, 0x0000, 0xffe0, 0xffe0, 0xffe0, 0xffe0, 0xffe0, 0xffe0, 0x0000, 0xffe0,
+        0x0000, 0x0000, 0xffe0, 0xffe0, 0xffe0, 0xffe0, 0xffe0, 0xffe0, 0x0000, 0x0000,
+    };
+
+    matrix.drawIcon (half_sun, x,y,10,5);
+    matrix.drawIcon (half_sun, x+51,y+32,10,5);
+
+    const char kkaoo[]= "my name is";
+    for(int i=0; i<sizeof(kkaoo)-1; i++){
+        matrix.drawChar(x+3+6*i,y+11,kkaoo[i],LED_RED_VERYLOW, LED_GREEN_VERYLOW, 1);
+    }
+
+    const char carson[]= "carson!";
+    for(int i=0; i<sizeof(carson)-1; i++){
+        matrix.drawChar(x+3+6*i,y+20,carson[i],LED_CYAN_LOW, 0, 1);
+    }
+
+    matrix.drawCircle(x+30,y+38,8,LED_RED_MEDIUM);
+    matrix.fillCircle(x+30,y+38,5,LED_PURPLE_LOW);
+
+    matrix.fillCircle(x+23,y+53,5,LED_BLUE_LOW);
+    matrix.fillCircle(x+37,y+53,5,LED_RED_LOW);
 
 }
 
